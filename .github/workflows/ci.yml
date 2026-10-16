@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main, "cursor/**"]
+  pull_request:
+
+jobs:
+  build-test-analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y libomp-dev gcc
+
+      - name: Install Python deps
+        run: pip install -r requirements.txt
+
+      - name: Build (serial + OpenMP)
+        run: make CC=gcc OMP_CC=gcc
+
+      - name: Unit tests
+        run: make test
+
+      - name: Count patterns
+        run: make run
+
+      - name: Partition benchmark
+        run: TRIALS=3 make benchmark
+
+      - name: Partition recall check
+        run: make recall
+
+      - name: Parallel benchmark
+        run: TRIALS=3 make parallel-bench
+
+      - name: Analyze
+        run: make analyze
+
+      - name: Smoke-test digit generator (small N)
+        run: python3 scripts/generate_pi_digits.py --digits 5000 --output /tmp/pi_smoke.txt
+
+      - name: Upload figures
+        uses: actions/upload-artifact@v4
+        with:
+          name: figures
+          path: figures/
