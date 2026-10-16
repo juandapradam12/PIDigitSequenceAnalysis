@@ -2,7 +2,7 @@
 
 A computational case study: count ascending digit sequences in the digits of $\pi$, test them against a uniform i.i.d. model, recover matches across partition boundaries, and compare serial vs OpenMP stitched scans.
 
-> **Portfolio naming:** the GitHub repo may still be called `JuanPrada_Ejercicio26`. See [docs/naming.md](docs/naming.md) for rename options (recommended: `pi-digit-sequence-analysis`).
+GitHub **About** blurb and topics: [docs/github-about.md](docs/github-about.md).
 
 ![Observed vs expected sequence counts](figures/observed_vs_expected.png)
 
@@ -90,7 +90,7 @@ N=10000000 make generate-digits    # → data/pi_digits_large.txt (gitignored)
 - Naive byte splits miss seam-spanning patterns; owned-range stitching matches the full-file count.
 - File-chunk wall time rises with $P$ (I/O/process overhead). OpenMP stitched partitions target compute parallelism on a single in-memory buffer.
 
-Details: [docs/methodology.md](docs/methodology.md) · Naming: [docs/naming.md](docs/naming.md)
+Details: [docs/methodology.md](docs/methodology.md).
 
 ---
 
