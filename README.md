@@ -90,7 +90,7 @@ N=10000000 make generate-digits    # → data/pi_digits_large.txt (gitignored)
 - Naive byte splits miss seam-spanning patterns; owned-range stitching matches the full-file count.
 - File-chunk wall time rises with $P$ (I/O/process overhead). OpenMP stitched partitions target compute parallelism on a single in-memory buffer.
 
-Details: [docs/methodology.md](docs/methodology.md) · Naming: [docs/naming.md](docs/naming.md)
+Details: [docs/methodology.md](docs/methodology.md).
 
 ---
 
