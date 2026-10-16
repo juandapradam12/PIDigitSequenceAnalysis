@@ -2,7 +2,7 @@
 
 A computational case study: count ascending digit sequences in the digits of $\pi$, test them against a uniform i.i.d. model, recover matches across partition boundaries, and compare serial vs OpenMP stitched scans.
 
-> **Portfolio naming:** the GitHub repo may still be called `JuanPrada_Ejercicio26`. See [docs/naming.md](docs/naming.md) for rename options (recommended: `pi-digit-sequence-analysis`).
+GitHub **About** blurb and topics: [docs/github-about.md](docs/github-about.md).
 
 ![Observed vs expected sequence counts](figures/observed_vs_expected.png)
 
