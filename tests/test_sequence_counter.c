@@ -97,6 +97,49 @@ static void test_null_args(void)
                   1);
 }
 
+static void test_owned_range_stitch(void)
+{
+    /* "12" starts at index 1 and spans the midpoint between halves [0,2)+[2,5). */
+    const char *digits = "31245";
+    const char *patterns[] = {"12"};
+    CountReport full;
+    CountReport parts;
+
+    count_patterns(digits, 5, patterns, 1, &full);
+    expect_eq_size("full count of 12", full.patterns[0].count, 1);
+
+    /* Ownership of the start index + full-buffer look-ahead recovers the hit. */
+    expect_eq_size("owned left captures seam start",
+                   count_occurrences_owned(digits, 5, "12", 2, 0, 2),
+                   1);
+    expect_eq_size("owned right does not double-count",
+                   count_occurrences_owned(digits, 5, "12", 2, 2, 5),
+                   0);
+
+    expect_eq_int("partitioned stitched equals full",
+                  count_patterns_partitioned(digits, 5, patterns, 1, 2, 0, &parts),
+                  0);
+    expect_eq_size("stitched partition count", parts.patterns[0].count, 1);
+}
+
+static void test_partitioned_matches_full(void)
+{
+    const char *digits = "1234512312345";
+    const char *patterns[] = {"1", "12", "123", "1234", "12345"};
+    CountReport full;
+    CountReport parts;
+    size_t i;
+
+    count_patterns(digits, strlen(digits), patterns, 5, &full);
+    count_patterns_partitioned(digits, strlen(digits), patterns, 5, 4, 0, &parts);
+
+    for (i = 0; i < 5; ++i) {
+        char name[64];
+        snprintf(name, sizeof(name), "partitioned equals full [%zu]", i);
+        expect_eq_size(name, parts.patterns[i].count, full.patterns[i].count);
+    }
+}
+
 int main(void)
 {
     test_overlapping_single_digit();
@@ -104,6 +147,8 @@ int main(void)
     test_no_match();
     test_load_digits_filters();
     test_null_args();
+    test_owned_range_stitch();
+    test_partitioned_matches_full();
 
     if (failures > 0) {
         fprintf(stderr, "%d test(s) failed\n", failures);

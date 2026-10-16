@@ -60,7 +60,28 @@ Sliding-window scan with `memcmp` per alignment:
 
 ---
 
-## Partition benchmark
+## Boundary-aware partitioning
+
+Split the index domain into $P$ **owned** ranges
+
+$$
+I_p = \Bigl[\Big\lfloor \tfrac{p N}{P}\Big\rfloor,\, \Big\lfloor \tfrac{(p+1)N}{P}\Big\rfloor\Bigr),
+\qquad p = 0,\ldots,P-1.
+$$
+
+Partition $p$ counts only starts $i \in I_p$, but may read $d_i,\ldots,d_{i+k-1}$ beyond the owned end. Summing over $p$ recovers $C_k$ exactly.
+
+**Naive byte chunks** (no look-ahead) miss any pattern whose start lies near the end of a chunk and whose body crosses the cut. `scripts/verify_partition_recall.py` measures those misses; `count_patterns_partitioned` implements the stitched rule.
+
+---
+
+## OpenMP parallel scan
+
+`bin/pi_counter_omp` parallelizes the loop over owned ranges with OpenMP. Threads reduce per-pattern counts without double-counting because ownership of $i$ is unique. This is a contrast to the **I/O chunking overhead** study in `benchmark.sh`, which intentionally processes separate files sequentially.
+
+---
+
+## I/O chunking benchmark
 
 For
 
@@ -68,14 +89,26 @@ $$
 P \in \{1, 2, 5, 10, 20, 50, 100\},
 $$
 
-the file is split into $P$ roughly equal **byte** chunks and each chunk is processed sequentially. Each $P$ is timed for $T$ independent trials (default $T=5$); the CSV stores sample mean and sample standard deviation of wall-clock time.
+the file is split into $P$ roughly equal **byte** chunks and each chunk is processed sequentially. Each $P$ is timed for $T$ trials (default $T=5$); the CSV stores sample mean and sample standard deviation.
 
-Interpretation:
+Interpretation: aggregate digit work stays $\Theta(N)$, while startup/I/O overhead grows with $P$. That experiment measures overhead, not parallel speedup and not full recall across seams.
 
-- Aggregate digit work remains $\Theta(N)$.
-- $T(P)$ typically **increases** with $P$ because startup and short-file overhead accumulate.
-- This is not a parallel speedup study.
-- Byte splits can cut patterns across chunk boundaries; summed per-chunk counts are therefore a lower bound on the full-file $C_k$. Frequency results always use the single full-file pass.
+---
+
+## Larger digit corpora
+
+`scripts/generate_pi_digits.py` builds $N$ digits with Machin's formula
+
+$$
+\frac{\pi}{4} = 4\arctan\frac{1}{5} - \arctan\frac{1}{239}
+$$
+
+using Python's `decimal` (stdlib only). Large outputs are gitignored; the committed default remains $\sim 2.5\times 10^6$ digits.
+
+```bash
+N=10000000 make generate-digits   # → data/pi_digits_large.txt
+./bin/pi_counter data/pi_digits_large.txt --csv results/pattern_counts_large.csv
+```
 
 ---
 
@@ -86,18 +119,22 @@ Interpretation:
 | `results/pattern_counts.csv` | $p$, $k$, $C_k$, per-pattern CPU seconds |
 | `results/observed_vs_expected.csv` | $\mathbb{E}[C_k]$, $\sigma$, $z_k$, $\varepsilon_k$ |
 | `results/digit_frequency.csv` | $n_d$, shares, $\chi^2$, $p$ |
-| `results/partition_benchmark.csv` | $P$, mean/std seconds, trials |
-| `figures/*.png` | Sequence counts, digit histogram, timing curve |
+| `results/partition_benchmark.csv` | I/O chunking mean/std seconds |
+| `results/partition_recall.csv` | Naive misses vs stitched recall |
+| `results/parallel_benchmark.csv` | Serial vs OpenMP stitched timings |
+| `figures/*.png` | Plots for the tables above |
 
 ---
 
 ## Software structure
 
 ```
-sequence_counter  →  pure counting + digit I/O
-main              →  CLI
-tests/            →  unit coverage for overlaps, filtering, errors
-benchmark.sh      →  multi-trial partition experiment
-analyze.py        →  z-scores, χ², plots
-.github/workflows →  build + test + pipeline CI
+sequence_counter     → counting, owned-range stitch, optional OpenMP
+main                 → CLI (--partitions, --parallel, --threads)
+tests/               → overlaps, stitch correctness, load filtering
+benchmark.sh         → sequential file-chunk overhead
+verify_partition_recall.py → naive vs stitched counts
+parallel_bench.sh    → serial full / stitched serial / OpenMP
+generate_pi_digits.py → optional larger corpora
+analyze.py           → z-scores, χ², figures
 ```

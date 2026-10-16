@@ -22,22 +22,45 @@ typedef struct {
 } CountReport;
 
 /**
- * Count non-overlapping and overlapping occurrences of each pattern
- * in a digit string using a sliding-window scan.
- *
- * @param digits     Null-terminated digit string (non-digit chars are skipped
- *                   during load; this function expects digits only).
- * @param length     Number of digits in the buffer.
- * @param patterns   Array of pattern strings to search for.
- * @param n_patterns Number of patterns.
- * @param report     Output report (must be non-NULL).
- * @return 0 on success, non-zero on error.
+ * Count overlapping occurrences of each pattern over the full digit buffer.
  */
 int count_patterns(const char *digits,
                    size_t length,
                    const char *const *patterns,
                    size_t n_patterns,
                    CountReport *report);
+
+/**
+ * Count patterns by splitting the stream into n_partitions owned ranges.
+ *
+ * Each partition p owns starts in [start_p, start_{p+1}). Matches may read
+ * up to (max_pattern_len - 1) digits past the owned end (boundary stitch),
+ * so the summed counts equal a full-file scan.
+ *
+ * When built with OpenMP and parallel != 0, partitions are processed in
+ * parallel. Wall/CPU timing is still recorded in the report.
+ *
+ * @param n_partitions Number of owned ranges (>= 1).
+ * @param parallel     Non-zero to enable OpenMP (no-op if not compiled with it).
+ */
+int count_patterns_partitioned(const char *digits,
+                               size_t length,
+                               const char *const *patterns,
+                               size_t n_patterns,
+                               size_t n_partitions,
+                               int parallel,
+                               CountReport *report);
+
+/**
+ * Count matches of needle whose start index i satisfies
+ * owned_begin <= i < owned_end (requires length look-ahead past owned_end).
+ */
+size_t count_occurrences_owned(const char *digits,
+                               size_t length,
+                               const char *needle,
+                               size_t needle_len,
+                               size_t owned_begin,
+                               size_t owned_end);
 
 /**
  * Load digits from a text file, keeping only characters '0'..'9'.

@@ -4,6 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 static const char *DEFAULT_PATTERNS[] = {
     "1",
     "12",
@@ -15,10 +19,17 @@ static const char *DEFAULT_PATTERNS[] = {
 static void print_usage(const char *prog)
 {
     fprintf(stderr,
-            "Usage: %s <digits_file> [--csv <path>] [--patterns p1,p2,...]\n"
+            "Usage: %s <digits_file> [options]\n"
             "\n"
             "Count digit-sequence occurrences in a text file of pi digits.\n"
-            "Default patterns: 1,12,123,1234,12345\n",
+            "\n"
+            "Options:\n"
+            "  --csv <path>           Write pattern CSV to <path>\n"
+            "  --patterns p1,p2,...   Comma-separated patterns (default: 1,12,123,1234,12345)\n"
+            "  --partitions N         Stitched partitioned scan with N owned ranges\n"
+            "  --parallel             Parallelize partitions (OpenMP build only)\n"
+            "  --threads N            OpenMP thread count (implies --parallel)\n"
+            "  -h, --help             Show this help\n",
             prog);
 }
 
@@ -74,6 +85,22 @@ static int parse_patterns(char *csv, const char ***out_patterns, size_t *out_n)
     return 0;
 }
 
+static int parse_size(const char *text, size_t *out)
+{
+    char *end = NULL;
+    unsigned long value;
+
+    if (text == NULL || out == NULL) {
+        return 1;
+    }
+    value = strtoul(text, &end, 10);
+    if (end == text || *end != '\0' || value == 0) {
+        return 1;
+    }
+    *out = (size_t)value;
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     const char *digits_path = NULL;
@@ -88,6 +115,10 @@ int main(int argc, char **argv)
     FILE *csv_out = NULL;
     size_t i;
     int argi;
+    size_t n_partitions = 0;
+    int parallel = 0;
+    size_t n_threads = 0;
+    int rc;
 
     if (argc < 2) {
         print_usage(argv[0]);
@@ -107,6 +138,21 @@ int main(int argc, char **argv)
                 return 1;
             }
             patterns_arg = argv[++argi];
+        } else if (strcmp(argv[argi], "--partitions") == 0) {
+            if (argi + 1 >= argc || parse_size(argv[argi + 1], &n_partitions) != 0) {
+                fprintf(stderr, "Invalid --partitions value\n");
+                return 1;
+            }
+            ++argi;
+        } else if (strcmp(argv[argi], "--parallel") == 0) {
+            parallel = 1;
+        } else if (strcmp(argv[argi], "--threads") == 0) {
+            if (argi + 1 >= argc || parse_size(argv[argi + 1], &n_threads) != 0) {
+                fprintf(stderr, "Invalid --threads value\n");
+                return 1;
+            }
+            ++argi;
+            parallel = 1;
         } else if (strcmp(argv[argi], "--help") == 0 ||
                    strcmp(argv[argi], "-h") == 0) {
             print_usage(argv[0]);
@@ -129,6 +175,23 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    if (parallel && n_partitions == 0) {
+        n_partitions = 8;
+    }
+
+#ifndef _OPENMP
+    if (parallel) {
+        fprintf(stderr,
+                "Warning: this binary was built without OpenMP; "
+                "running stitched partitions serially.\n");
+        parallel = 0;
+    }
+#else
+    if (parallel && n_threads > 0) {
+        omp_set_num_threads((int)n_threads);
+    }
+#endif
+
     if (patterns_arg != NULL) {
         if (parse_patterns(patterns_arg, &owned_patterns, &n_patterns) != 0) {
             fprintf(stderr, "Invalid --patterns list\n");
@@ -144,7 +207,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (count_patterns(digits, n_digits, patterns, n_patterns, &report) != 0) {
+    if (n_partitions > 0) {
+        rc = count_patterns_partitioned(digits, n_digits, patterns, n_patterns,
+                                        n_partitions, parallel, &report);
+    } else {
+        rc = count_patterns(digits, n_digits, patterns, n_patterns, &report);
+    }
+
+    if (rc != 0) {
         fprintf(stderr, "Pattern counting failed\n");
         free(digits);
         free(owned_patterns);
@@ -152,6 +222,15 @@ int main(int argc, char **argv)
     }
 
     printf("digits_scanned=%zu\n", report.digits_scanned);
+    if (n_partitions > 0) {
+        printf("partitions=%zu\n", n_partitions);
+        printf("parallel=%s\n", parallel ? "yes" : "no");
+#ifdef _OPENMP
+        if (parallel) {
+            printf("omp_max_threads=%d\n", omp_get_max_threads());
+        }
+#endif
+    }
     printf("total_elapsed_seconds=%.9f\n", report.total_elapsed_seconds);
     printf("%-10s %8s %12s %16s\n", "pattern", "length", "count", "seconds");
     for (i = 0; i < report.pattern_count; ++i) {

@@ -203,12 +203,98 @@ def plot_digit_frequency(freq: np.ndarray, out_path: Path) -> None:
     plt.close(fig)
 
 
+def plot_partition_recall(path: Path, out_path: Path) -> None:
+    if not path.exists():
+        return
+
+    by_p: dict[int, int] = {}
+    with path.open(newline="") as fh:
+        for row in csv.DictReader(fh):
+            # Frequent length-2 pattern: seam collisions are easy to observe.
+            if row["pattern"] != "12":
+                continue
+            by_p[int(row["partitions"])] = int(row["naive_missed"])
+
+    if not by_p:
+        return
+
+    partitions = np.array(sorted(by_p))
+    missed = np.array([by_p[p] for p in partitions])
+
+    fig, ax = plt.subplots(figsize=(7.5, 4.8))
+    ax.plot(partitions, missed, marker="o", color="#e07a3d", linewidth=2)
+    ax.set_xlabel("Number of partitions")
+    ax.set_ylabel("Missed matches (pattern 12)")
+    ax.set_title("Naive chunking loses boundary-spanning patterns")
+    ax.set_xscale("log")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=160)
+    plt.close(fig)
+
+
+def plot_parallel_benchmark(path: Path, out_path: Path) -> None:
+    if not path.exists():
+        return
+
+    series: dict[str, list[tuple[int, float, float]]] = {}
+    with path.open(newline="") as fh:
+        for row in csv.DictReader(fh):
+            mode = row["mode"]
+            series.setdefault(mode, []).append(
+                (
+                    int(row["partitions"]),
+                    float(row["mean_seconds"]),
+                    float(row["std_seconds"]),
+                )
+            )
+
+    if not series:
+        return
+
+    fig, ax = plt.subplots(figsize=(7.5, 4.8))
+    colors = {
+        "serial_full": "#6b6b6b",
+        "stitched_serial": "#1f4e5f",
+        "stitched_omp": "#e07a3d",
+    }
+    for mode, points in series.items():
+        points = sorted(points)
+        xs = [p[0] for p in points]
+        ys = [p[1] for p in points]
+        es = [p[2] for p in points]
+        ax.errorbar(
+            xs,
+            ys,
+            yerr=es,
+            marker="o",
+            linewidth=2,
+            capsize=3,
+            label=mode,
+            color=colors.get(mode),
+        )
+
+    ax.set_xlabel("Number of partitions")
+    ax.set_ylabel("Wall-clock time (s)")
+    ax.set_title("Serial vs OpenMP stitched partition scans")
+    ax.set_xscale("log")
+    ax.legend(frameon=False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=160)
+    plt.close(fig)
+
+
 def main() -> None:
     FIGURES.mkdir(parents=True, exist_ok=True)
     RESULTS.mkdir(parents=True, exist_ok=True)
 
     counts_path = RESULTS / "pattern_counts.csv"
     bench_path = RESULTS / "partition_benchmark.csv"
+    recall_path = RESULTS / "partition_recall.csv"
+    parallel_path = RESULTS / "parallel_benchmark.csv"
     digits_file = ROOT / "data" / "pi_digits.txt"
 
     if not counts_path.exists():
@@ -226,6 +312,8 @@ def main() -> None:
 
     partitions, means, stds = load_benchmark(bench_path)
     plot_partition_timing(partitions, means, stds, FIGURES / "partition_timing.png")
+    plot_partition_recall(recall_path, FIGURES / "partition_recall.png")
+    plot_parallel_benchmark(parallel_path, FIGURES / "parallel_benchmark.png")
 
     print(f"digits_analyzed={n_digits}")
     print(f"digit_chi_square={chi2:.4f} p_approx={p:.4g}")
@@ -234,6 +322,10 @@ def main() -> None:
     print(f"wrote {FIGURES / 'observed_vs_expected.png'}")
     print(f"wrote {FIGURES / 'digit_frequency.png'}")
     print(f"wrote {FIGURES / 'partition_timing.png'}")
+    if recall_path.exists():
+        print(f"wrote {FIGURES / 'partition_recall.png'}")
+    if parallel_path.exists():
+        print(f"wrote {FIGURES / 'parallel_benchmark.png'}")
 
 
 if __name__ == "__main__":
