@@ -1,8 +1,10 @@
 # Repository naming options
 
-The current GitHub name `JuanPrada_Ejercicio26` reads as a coursework dump. For a portfolio landing page, pick a name that states the **artifact** (what it analyzes) and optionally the **method** (how).
+**Current GitHub name:** [`PIDigitSequenceAnalysis`](https://github.com/juandapradam12/PIDigitSequenceAnalysis).
 
-Rename on GitHub: **Settings → General → Repository name**. Update the clone URL afterward; this branch does not rename the remote for you.
+Earlier working titles (kept for reference if you rename again). Prefer a slug that states the **artifact** and optionally the **method**.
+
+Rename on GitHub: **Settings → General → Repository name**.
 
 ## Strong options (recommended)
 
