@@ -2,81 +2,80 @@
 
 ## Problem statement
 
-Let $D = d_1 d_2 \ldots d_N$ be the first $N$ decimal digits of $\pi$ (integer part and fractional digits, with non-digit characters removed). For a pattern $p$ of length $k$, define the occurrence count
+Let $D = d_1 d_2 \ldots d_N$ be the first $N$ decimal digits of $\pi$ (non-digit characters removed). For a pattern $p$ of length $k$,
 
 $$
 C_k(p) = \sum_{i=1}^{N-k+1} \mathbf{1}\{d_i d_{i+1}\cdots d_{i+k-1} = p\}.
 $$
 
-This project evaluates $C_k(p)$ for
+Default patterns:
 
 $$
-p \in \{1,\, 12,\, 123,\, 1234,\, 12345\}
+p \in \{1,\, 12,\, 123,\, 1234,\, 12345\}.
 $$
-
-and records CPU time per pattern plus wall-clock time under sequential partitioning.
 
 ---
 
 ## Statistical baseline
 
-Assume digits are i.i.d. uniform on $\{0,1,\ldots,9\}$. Then each alignment matches $p$ with probability
+Assume digits are i.i.d. uniform on $\{0,1,\ldots,9\}$. Then
 
 $$
 \mathbb{P}(\text{match}) = 10^{-k},
+\qquad
+\mathbb{E}[C_k(p)] = (N - k + 1)\,10^{-k}.
 $$
 
-and linearity of expectation yields
+Approximate standardized residual (Bernoulli-trials variance, ignoring window dependence):
 
 $$
-\mathbb{E}[C_k(p)] = (N - k + 1)\,10^{-k},
+z_k \approx \frac{C_k - \mathbb{E}[C_k]}{\sqrt{\mathbb{E}[C_k]\,(1-10^{-k})}}.
 $$
 
-independent of the specific digit content of $p$ (as long as $|p| = k$).
-
-Relative discrepancy used in the comparison CSV:
+Relative discrepancy:
 
 $$
-\varepsilon_k = \frac{\bigl|C_k(p) - \mathbb{E}[C_k(p)]\bigr|}{\mathbb{E}[C_k(p)]}.
+\varepsilon_k = \frac{\bigl|C_k - \mathbb{E}[C_k]\bigr|}{\mathbb{E}[C_k]}.
 $$
 
-For large $N$ and small $k$, $\varepsilon_k$ is typically small if $\pi$'s digits behave like the uniform model at these scales. Longer patterns ($k = 4,5$) have large relative variance because $\mathbb{E}[C_k]$ is $O(N/10^k)$.
+### Marginal digit frequencies
+
+Let $n_d$ be the count of digit $d \in \{0,\ldots,9\}$ and $N=\sum_d n_d$. Under uniformity,
+
+$$
+\chi^2 = \sum_{d=0}^{9} \frac{(n_d - N/10)^2}{N/10},
+$$
+
+compared to a $\chi^2_9$ reference (Wilson–Hilferty $p$-value approximation in `analyze.py`).
 
 ---
 
 ## Counting algorithm
 
-The core scan is a sliding-window comparison:
+Sliding-window scan with `memcmp` per alignment:
 
-- For each pattern $p$ of length $k$, walk $i = 0, \ldots, N-k$.
-- Compare $D[i..i+k)$ to $p$ with `memcmp` ($O(k)$ per alignment).
-- Total cost per pattern: $O\bigl((N-k+1)\,k\bigr)$.
-
-Overlaps are intentional: the indicator in $C_k(p)$ fires at every starting index, so the empirical count is directly comparable to $\mathbb{E}[C_k]$.
-
-Digits are loaded once, filtered to `'0'..'9'`, then scanned in memory — I/O is amortized outside the per-pattern timers.
+- Cost per pattern: $O\bigl((N-k+1)\,k\bigr)$.
+- Overlaps counted (every starting index).
+- Digits loaded once, filtered to `'0'..'9'`, then scanned in memory.
 
 ---
 
 ## Partition benchmark
 
-For partition counts
+For
 
 $$
 P \in \{1, 2, 5, 10, 20, 50, 100\},
 $$
 
-the digit file is split into $P$ roughly equal byte chunks. Each chunk is fed to the counter **sequentially**. The reported metric is wall-clock time for the full loop:
-
-$$
-T(P) = t_{\text{end}} - t_{\text{start}}.
-$$
+the file is split into $P$ roughly equal **byte** chunks and each chunk is processed sequentially. Each $P$ is timed for $T$ independent trials (default $T=5$); the CSV stores sample mean and sample standard deviation of wall-clock time.
 
 Interpretation:
 
-- Work on digits remains $\Theta(N)$ in aggregate.
-- As $P$ grows, process startup, open/close, and short-file overhead accumulate, so $T(P)$ is expected to **increase** rather than decrease.
-- This isolates chunking overhead; it is not a parallel speedup study.
+- Aggregate digit work remains $\Theta(N)$.
+- $T(P)$ typically **increases** with $P$ because startup and short-file overhead accumulate.
+- This is not a parallel speedup study.
+- Byte splits can cut patterns across chunk boundaries; summed per-chunk counts are therefore a lower bound on the full-file $C_k$. Frequency results always use the single full-file pass.
 
 ---
 
@@ -85,10 +84,10 @@ Interpretation:
 | Artifact | Content |
 | --- | --- |
 | `results/pattern_counts.csv` | $p$, $k$, $C_k$, per-pattern CPU seconds |
-| `results/observed_vs_expected.csv` | $C_k$ vs $\mathbb{E}[C_k]$ and $\varepsilon_k$ |
-| `results/partition_benchmark.csv` | $P$, $T(P)$, digits scanned |
-| `figures/observed_vs_expected.png` | Bar chart of $C_k$ vs $\mathbb{E}[C_k]$ |
-| `figures/partition_timing.png` | $T(P)$ vs $P$ |
+| `results/observed_vs_expected.csv` | $\mathbb{E}[C_k]$, $\sigma$, $z_k$, $\varepsilon_k$ |
+| `results/digit_frequency.csv` | $n_d$, shares, $\chi^2$, $p$ |
+| `results/partition_benchmark.csv` | $P$, mean/std seconds, trials |
+| `figures/*.png` | Sequence counts, digit histogram, timing curve |
 
 ---
 
@@ -96,9 +95,9 @@ Interpretation:
 
 ```
 sequence_counter  →  pure counting + digit I/O
-main              →  argument parsing, human + CSV reporting
-benchmark.sh      →  partition experiment orchestration
-analyze.py        →  expectation formulas, plots, summary tables
+main              →  CLI
+tests/            →  unit coverage for overlaps, filtering, errors
+benchmark.sh      →  multi-trial partition experiment
+analyze.py        →  z-scores, χ², plots
+.github/workflows →  build + test + pipeline CI
 ```
-
-The C API (`count_patterns`, `load_digits`, `write_report_csv`) is intentional: the same library can back alternative drivers (e.g. different pattern sets or online streams) without changing the analysis layer.

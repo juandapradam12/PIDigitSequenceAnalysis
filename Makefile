@@ -7,22 +7,35 @@ LDLIBS  ?=
 SRC_DIR = src
 BIN_DIR = bin
 OBJ_DIR = build
+TEST_DIR = tests
 
-SRCS = $(SRC_DIR)/sequence_counter.c $(SRC_DIR)/main.c
-OBJS = $(OBJ_DIR)/sequence_counter.o $(OBJ_DIR)/main.o
+LIB_OBJS = $(OBJ_DIR)/sequence_counter.o
+APP_OBJS = $(LIB_OBJS) $(OBJ_DIR)/main.o
+TEST_OBJS = $(LIB_OBJS) $(OBJ_DIR)/test_sequence_counter.o
+
 TARGET = $(BIN_DIR)/pi_counter
+TEST_BIN = $(BIN_DIR)/test_sequence_counter
 
-.PHONY: all clean dirs run benchmark analyze
+.PHONY: all clean dirs run benchmark analyze test
 
 all: dirs $(TARGET)
 
 dirs:
 	@mkdir -p $(BIN_DIR) $(OBJ_DIR) results figures
 
-$(TARGET): $(OBJS)
+$(TARGET): $(APP_OBJS)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
 
-$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c include/sequence_counter.h
+$(TEST_BIN): $(TEST_OBJS)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+$(OBJ_DIR)/sequence_counter.o: $(SRC_DIR)/sequence_counter.c include/sequence_counter.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+$(OBJ_DIR)/main.o: $(SRC_DIR)/main.c include/sequence_counter.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+
+$(OBJ_DIR)/test_sequence_counter.o: $(TEST_DIR)/test_sequence_counter.c include/sequence_counter.h
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
 
 run: $(TARGET)
@@ -33,6 +46,9 @@ benchmark: $(TARGET)
 
 analyze:
 	python3 scripts/analyze.py
+
+test: dirs $(TEST_BIN)
+	./$(TEST_BIN)
 
 clean:
 	rm -rf $(BIN_DIR) $(OBJ_DIR)
